@@ -1,0 +1,114 @@
+---
+title: "EP06"
+author: "Bastian Brito, Sebastian Cassone"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Enunciado
+
+Un equipo de investigadores del área de interacción humano-información está estudiando si el área temática y el nivel de dificultad del problema de información influyen en el tiempo (en segundos) que toma un usuario en formular una consulta de búsqueda para resolver dicho problema. Para ello, han reclutado a un grupo de participantes voluntarios, asignados aleatoriamente a distintos grupos. Cada participante debe resolver tres problemas de información con diferentes niveles de dificultad: baja, media y alta. A su vez, cada grupo debe resolver problemas relacionados a una temática diferente. Los datos recolectados contemplan las siguientes variables:
+
+id: identificador único de cada participante.
+area: Área temática de los problemas que el participante debe responder. Variable categórica con los niveles Arquitectura, Biología, Computación, Economía, Física, Leyes, Literatura, Matemáticas, Música, Pedagogía, Psicología, Química.
+dificultad: Nivel de dificultad del problema resuelto. Variable categórica con los niveles Baja, Media y Alta.
+tiempo: Tiempo, en segundos, que toma al participante formular la consulta.
+
+# Pregunta
+
+En este momento, los investigadores buscan determinar si existen diferencias en el tiempo que tardan los usuarios en formular consultas para problemas con diferente nivel de dificultad en el área de leyes.
+
+Primero, se lee el archivo csv.
+
+```{r}
+# Importamos las librerías
+library(dplyr)
+library(ggpubr)
+library(ez)
+library(emmeans)
+library(nlme)
+
+# Lectura de archivo
+# Se abre el CSV, cambiar la ruta según corresponda
+nombre_archivo <- "EP06 Datos.csv"
+carpeta_direccion <- "~/Documentos/ejercicios_R/EI/estadistica_inferencial_grupo6/EP06"
+ruta <- file.path(carpeta_direccion, nombre_archivo)
+datos <- read.csv(ruta, stringsAsFactors = TRUE)
+# Filtrar por tipo de cubo y países
+datos_filtrados <- datos %>%
+  filter(area == "Leyes")
+datos_filtrados
+```
+
+En este momento, los investigadores buscan determinar si existen diferencias en el tiempo que tardan los usuarios en formular consultas para problemas con diferente nivel de dificultad en el área de leyes.
+
+H0: No existen diferencias en la media del tiempo que tardan en formular consultas las mismas personas para problemas con diferente nivel de dificultad en el área de leyes.
+Ha: Existe al menos una diferencia en las medias con respecto al tiempo que tardan en formular consultas las mismas personas para problemas con diferente nivel de dificultad en el área de leyes.
+
+Para usar Anova se tienen que cumplir estas 4 condiciones:
+
+1.- La escala con que se midede la variable dependiente tiene las propiedades de una escala de intervalos iguales
+
+Se cumple que los intervalos de la variable dependiente (tiempo) posee propiedades de una escala de intervalos iguales(La diferencia entre 10 y 20 seg, es la misma entre 20 y 30 seg)
+
+2.- Las mediciones son independientes al interior de cada grupo
+
+El enunciado señala que el proceso de selección de las personas garantiza el cumplimiento, ya que reclutaron voluntarios asignados aleatoriamente a distintos grupos
+
+3.- Los datos siguen una distribucion parecida a la normal
+
+```{r}
+# Comprobamos la normalidad de los datos con el gráfico q-q
+g <- ggqqplot(datos_filtrados, x = "tiempo", y = "dificultad", color = "dificultad")
+g <- g + facet_wrap(~dificultad)
+g <- g + rremove("x.ticks") + rremove("x.text")
+g <- g + rremove("y.ticks") + rremove("y.text")
+g <- g + rremove("axis.title")
+print(g)
+
+# Comprobamos la normalidad de los datos con el test de Shapiro
+shapiro_alta <- shapiro.test((datos_filtrados %>% filter(dificultad == "Alta"))$tiempo)
+shapiro_media <- shapiro.test((datos_filtrados %>% filter(dificultad == "Media"))$tiempo)
+shapiro_baja <- shapiro.test((datos_filtrados %>% filter(dificultad == "Baja"))$tiempo)
+shapiro_alta
+shapiro_media
+shapiro_baja
+```
+
+Como se puede apreciar en el gráfico todas las muestras siguen razonablemente una distribución normal, por lo que se puede asumir razonablemente que la población de origen también sigue una distribución normal. Además se utiliza el test shapiro-wilk y se puede observa que son mayores a una significancia del 0.05 por lo que se acepta las hipótesis nulas de estos test que es que las muestras siguen una distribución normal.
+
+
+4.- La matriz de varianzas-covarianzas es esférica. Esta condición se verificará una vez hecha la prueba de ANOVA con la prueba de esfericididad de Mauchly.
+
+Una vez verificadas las tres condiciones (la cuarta se verificará una vez hecha la prueba) se hace la prueba de ANOVA para muestras correlacionadas.
+```{r}
+# Se hace la prueba de ANOVA para muestras correlacionadas.
+prueba_anova <- ezANOVA(data = datos_filtrados, dv = tiempo, within = dificultad,
+                          wid = id, return_aov = TRUE)
+print(summary(prueba_anova$aov))
+print(prueba_anova$`Mauchly's Test for Sphericity`)
+```
+Con respecto a la prueba de esfericididad de Mauchly se acepta la hipótesis nula de que la matriz de varianzas y covarianzas es esférica por lo que se cumple todas las condiciones de ANOVA de una vía para muestras correlacionadas.
+Con el p-value < 2e-16 y este a su vez es menor que la signficancia considerada para este experimiento del 0.05, rechazamos la hipótesis nula y aceptamos la hipótesis alternativa de que existe al menos una diferencia en las medias con respecto al tiempo que tardan en formular consultas las mismas personas para problemas con diferente nivel de dificultad en el área de leyes
+
+Luego, hacemos un análsis post-hoc para determinar cuál o cuales son las dificultades que tienen una media de tiempo diferente, para esto utilizaremos el procedimiento HSD de Tukey.
+
+```{r}
+# Se hace la prueba post-hoc HSD de Tukey
+mixto <- lme(tiempo ~ dificultad, data = datos_filtrados, random = ~1|id)
+medias <- emmeans(mixto, "dificultad")
+tukey <- pairs(medias, adjust = "tukey")
+print(tukey)
+
+# Se grafica el tamaño del efecto
+tamaño_efecto <- ezPlot(data = datos_filtrados, dv = tiempo, wid = id, within = dificultad, y_lab= "Tiempo promedio que tarda formular consultas", x = dificultad)
+tamaño_efecto <- tamaño_efecto + theme_pubr()
+
+print(tamaño_efecto)
+```
+
+Con lo anterior, podemos observar que entre todas las dificultades hay diferencias significativas ya que el p-value es menor que la significancia siendo un 0.05. Por lo que se concluye que hay hay diferencias en las medias con respecto al tiempo que tardan en formular consultas las mismas personas para problemas con diferente nivel de dificultad en el área de leyes.

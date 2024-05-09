@@ -1,0 +1,324 @@
+---
+title: "EP08"
+author: "Sebastián Cassone y Bastián Brito"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Enunciado
+
+Como habíamos visto a comienzos del semestre, la Encuesta de Caracterización Socioeconómica Nacional (Casen) es realizada por el Ministerio de Desarrollo Social de forma periódica para conocer la situación de los hogares chilenos con relación a aspectos demográficos, de educación, salud, vivienda, trabajo e ingresos. Es la principal fuente de información para estimar la magnitud de la pobreza y la distribución del ingreso en el país.
+
+Se tiene a disposición un archivo CSV con un subconjunto de los datos obtenidos en la Casen 2017. El equipo debe revisar las columnas disponibles en este archivo según la descripción en el libro de códigos de la encuesta, que también queda disponible para este ejercicio. Es importante notar que en esta encuesta hay datos de carácter colectivo sobre “el hogar” del entrevistado, pero también hay datos de carácter individual, que se refieren “al jefe o la jefa de hogar” (no al entrevistado).
+
+# Pregunta
+
+Propongan una pregunta de investigación original, que involucre la comparación de una frecuencia de un evento o característica en dos grupos independientes (más abajo se dan unos ejemplos). Fijando una semilla propia, seleccionen una muestra aleatoria de hogares (100 < n < 150) y respondan la pregunta propuesta utilizando el método Monte Carlo.
+
+Propongan una pregunta de investigación original, que involucre la comparación de las medias de más de dos grupos independientes (más abajo se dan unos ejemplos). Fijando una semilla distinta a la anterior, seleccionen una muestra aleatoria de hogares (200 < n < 300) y respondan la pregunta propuesta utilizando bootstrapping. Solo por ejercicio académico, aplique un análisis post-hoc con bootstrapping aunque este no fuera necesario.
+
+Para el trabajo posterior, primero se leerá el archivo CSV.
+
+```{r cars}
+# Lectura de archivo
+# Se abre el CSV, cambiar la ruta según corresponda
+nombre_archivo <- "EP08 Datos CASEN 2017.csv"
+carpeta_direccion <-"C:\\Users\\BastiánBritoGarrido\\Desktop\\estadistica_inferencial_grupo6\\EP08" #"~/Documentos/ejercicios_R/EI/estadistica_inferencial_grupo6/EP08"
+ruta <- file.path(carpeta_direccion, nombre_archivo)
+datos <- read.csv2(ruta)
+
+library(dplyr)
+library(ggpubr)
+```
+
+
+# Pregunta 1
+Propongan una pregunta de investigación original, que involucre la comparación de una frecuencia de un evento o característica en dos grupos independientes (más abajo se dan unos ejemplos). Fijando una semilla propia, seleccionen una muestra aleatoria de hogares (100 < n < 150) y respondan la pregunta propuesta utilizando el método Monte Carlo.
+
+
+Pregunta: "¿Existe una diferencia significativa en la frecuencia de horas de trabajo por semana (o10), entre dos grupos demográficos diferentes, personas de ciudad (Región Metropolitana) y Personas de Región (Fuera de la Región Metropolitana)?"
+
+Para ver si existe alguna diferencia significativa en la horas de trabajo de las personas dentro y fuera de la Región Metropolitana, usaremos el esatdistico de la media
+
+
+Ho: No existe una diferencia significativa en la frecuencia de horas de trabajo por semana, entre dos grupos demográficos diferentes, personas de ciudad (Región Metropolitana) y Personas de Región (Fuera de la Región Metropolitana)
+
+Ha: Existe una diferencia significativa en la frecuencia de horas de trabajo por semana, entre dos grupos demográficos diferentes, personas de ciudad (Región Metropolitana) y Personas de Región (Fuera de la Región Metropolitana)
+
+
+
+```{r}
+#Establecemos semilla y cantidad de repeticiones
+set.seed(9)
+R = 4999
+
+# Función para obtener una permutación.
+# Argumentos:
+# - i: iterador (para llamadas posteriores).
+# - muestra_1, muestra_2: muestras.
+# Valor:
+# - lista con las muestras resultantes tras la permutación.
+obtiene_permutacion <- function(i, muestra_1, muestra_2) {
+  n_1 <- length(muestra_1)
+  combinada <- c(muestra_1, muestra_2)
+  n <- length(combinada)
+  permutacion <- sample(combinada, n, replace = FALSE)
+  nueva_1 <- permutacion[1:n_1]
+  nueva_2 <- permutacion[(n_1+1):n]
+  return(list(nueva_1, nueva_2))
+}
+
+# Función para calcular la diferencia de un estadístico de interés entre las
+# dos muestras.
+# Argumentos:
+# - muestras: lista con las muestras.
+# - FUN: nombre de la función que calcula el estadístico de interés.
+# Valor:
+# - diferencia de un estadístico para dos muestras.
+calcular_diferencia <- function(muestras, FUN) {
+  muestra_1 <- muestras[[1]]
+  muestra_2 <- muestras[[2]]
+  diferencia <- FUN(muestra_1) - FUN(muestra_2)
+  return(diferencia)
+}
+
+
+# Función para calcular el valor p.
+# Argumentos:
+# - distribucion: distribución nula del estadístico de interés.
+# - valor_observado: valor del estadístico de interés para las muestras
+#   originales.
+# - repeticiones: cantidad de permutaciones a realizar.
+# - alternative: tipo de hipótesis alternativa. "two.sided" para
+#   hipótesis bilateral, "greater" o "less" para hipótesis unilaterales.
+# Valor:
+# - el valor p calculado.
+calcular_valor_p <- function(distribucion, valor_observado, repeticiones, alternative) {
+  if (alternative == "two.sided") {
+    numerador <- sum(abs(distribucion) > abs(valor_observado)) + 1
+    denominador <- repeticiones + 1
+    valor_p <- numerador / denominador
+  } else if (alternative == "greater") {
+    numerador <- sum(distribucion > valor_observado) + 1
+    denominador <- repeticiones + 1
+    valor_p <- numerador / denominador
+  } else {
+    numerador <- sum(distribucion < valor_observado) + 1
+    denominador <- repeticiones + 1
+    valor_p <- numerador / denominador
+  }
+
+  return(valor_p)
+}
+
+  
+# Función para graficar una distribución.
+# Argumentos:
+# - distribucion: distribución nula del estadístico de interés.
+# - ...: otros argumentos a ser entregados a ggihistogram y ggqqplot.
+graficar_distribucion <- function(distribucion, ...) {
+  observaciones <- data.frame(distribucion)
+  histograma <- gghistogram(observaciones, x = "distribucion", 
+                             xlab = "Estadístico de interés", 
+                             ylab = "Frecuencia", bins = 30, ...)
+  qq <- ggqqplot(observaciones, x = "distribucion", ...)
+
+  # Crear una única figura con todos los gráficos de dispersión.
+  figura <- ggarrange(histograma, qq, ncol = 2, nrow = 1)
+  print(figura)
+}
+
+
+# Función para hacer la prueba de permutaciones.
+# Argumentos:
+# - muestra_1, muestra_2: vectores numéricos con las muestras a comparar.
+# - repeticiones: cantidad de permutaciones a realizar.
+# - FUN: función del estadístico E para el que se calcula la diferencia.
+# - alternative: tipo de hipótesis alternativa. "two.sided" para 
+#   hipótesis bilateral, "greater" o "less" para hipótesis unilaterales.
+# - plot: si es TRUE, construye el gráfico de la distribución generada.
+# - ...: otros argumentos a ser entregados a graficar_distribucion.
+contrastar_hipotesis_permutaciones <- function(muestra_1, muestra_2,
+                                               repeticiones, FUN, alternative, plot, ...) {
+  cat("Prueba de permutaciones\n\n")
+  cat("Hipótesis alternativa:", alternative, "\n")
+  observado <- calcular_diferencia(list(muestra_1, muestra_2), FUN)
+  cat("Valor observado:", observado, "\n")
+
+  n_1 <- length(muestra_1)
+
+  # Generar permutaciones.
+  permutaciones <- lapply(1:repeticiones, obtiene_permutacion, muestra_1, muestra_2)
+
+  # Generar la distribución.
+  distribucion <- sapply(permutaciones, calcular_diferencia, FUN)
+
+  # Graficar la distribución.
+  if (plot) {
+    graficar_distribucion(distribucion, ...)
+  }
+
+  # Calcular el valor p.
+  valor_p <- calcular_valor_p(distribucion, observado, repeticiones, alternative)
+
+  cat("Valor p:", valor_p, "\n\n")
+}
+
+
+
+```
+
+
+```{r}
+
+#Filtramos los datos por las personas que trabajan
+datos1 <- datos %>%
+  filter(oficio1 != "NA")
+
+#Separamos las muestras entre las personas de la Region Metropolitana y las que no
+Datos_Santiago <- datos1 %>%
+  filter(region == "Regi�n Metropolitana de Santiago")
+
+Datos_Region <- datos1 %>%
+  filter(region != "Regi�n Metropolitana de Santiago")
+
+#Fijamos el numero de muestras
+n <- 125
+sample_santiago <- Datos_Santiago[sample(nrow(Datos_Santiago),n),];
+sample_region <- Datos_Region[sample(nrow(Datos_Region),n),];
+
+
+
+shapiro_R <- shapiro.test(sample_region$o10)
+shapiro_S <- shapiro.test(sample_santiago$o10)
+shapiro_R
+shapiro_S
+```
+
+Como el valor p de los test Shapiro Wilk Test es menor a nuestro nivel de significancia (0.05) significa que nuestros datos no siguen una distribución nomral, así que procedermos a usar la Simulacion de Monte Carlo.
+
+
+```{r}
+
+
+# Hacer pruebas de permutaciones para la media y la varianza.
+
+contrastar_hipotesis_permutaciones(sample_santiago$o10, sample_region$o10, repeticiones = R, FUN = mean,
+                                   alternative = "two.sided", plot = TRUE,
+                                   color = "blue", fill = "blue")
+
+```
+Tras realizar la prueba, observamos que la distribución se asemeja en gran medida a una distribución normal, aunque presenta ciertas asimetrías en los extremos. El valor p obtenido para el contraste es de 0.4366, que supera nuestro nivel de significancia establecido en 0.05. Por lo tanto, podemos concluir con un 95% de confianza que no existe evidencia suficiente para afirmar que hay diferencias significativas en las horas trabajadas entre las personas que residen fuera de la Región Metropolitana y aquellas dentro de la Región Metropolitana.
+
+
+
+
+Pregunta 2. ¿Serán iguales las medias de ingresos entre las personas que estudiaron en una Universidad Estatal, CFT, e IP, en la región metropolitana? Determine cuales son las personas de instituciones de mayores ingresos y de menores ingresos. Se va a fijar la semilla 321.
+
+Variables a usar: 
+- ch1 -> Si trabaja o no.
+- ytotcorh -> Ingresos por Hogar Corregido (personalmente me hubiera gustado usar y1 pero no estaba en el csv).
+- region -> región.
+- e8 -> Educación Superior de la persona.
+
+Primero se obtienen los datos que se van a trabajar.
+
+```{r cars}
+
+# Se obtienen las muestras de interés
+# Fijamos la semilla
+set.seed(321)
+
+# Luego filtramos los datos de la región metropolitana y obtenemos 270 muestras aleatorias
+datos_rm <- datos %>%
+  filter(region == "Regi�n Metropolitana de Santiago" & ch1 == "Patr�n o empleador/ Trabajador Cuenta Propia" &
+    (e8 == "Centro de Formaci�n T�cnica" | e8 == "Instituto Profesional" | e8 == "Universidad Estatal")) %>%
+  sample_n(200, replace = FALSE)
+
+# Una vez obtenido los datos se procede a filtrar los datos separandolos en grupos
+datos_cft <- datos_rm %>% filter(e8 == "Centro de Formaci�n T�cnica")
+datos_ip <- datos_rm %>% filter(e8 == "Instituto Profesional")
+datos_uestatales <- datos_rm %>% filter(e8 == "Universidad Estatal")
+```
+
+Luego de esto, debido a que queremos comparar más de dos muestras independientes, verificamos si podemos utilizar la prueba paramétrica ANOVA.
+Las condiciones de este son las siguientes:
+1. La escala con que se mide la variable dependiente tiene las propiedades de una escala de intervalosiguales.
+2. Las k muestras son obtenidas de manera aleatoria e independiente desde la(s) población(es) de origen.
+3. Se puede suponer razonablemente que la(s) población(es) de origen sigue(n) una distribución normal.
+4. Si las muestras provienen de más de una población, estas tienen la misma varianza.
+
+Primero, comprobaremos la normalidad de los datos con gráficos q-q de las muestras independientes.
+
+```{r}
+library(ggpubr)
+
+# Crear un vector con los nombres de los datos
+nombres <- c(
+  "datos_cft", "datos_ip", "datos_uestatales"
+)
+
+# Crear un data frame combinado con los nombres de los datos
+df <- data.frame(
+  ytotcorh = c(
+    datos_cft$ytotcorh, datos_ip$ytotcorh, datos_uestatales$ytotcorh
+  ),
+  grupo = rep(nombres, sapply(list(
+    datos_cft, datos_ip, datos_uestatales
+  ), nrow))
+)
+
+# Crear el gráfico Q-Q con ggpubr
+ggqqplot(df, "ytotcorh", facet.by = "grupo", palette = "jco")
+```
+
+No se pudo aplicar shapiro-wilk por que en algunas muestras eran muy pocas observaciones, por lo que se decidió aplicar gráficos q-q. Como se puede observar, varias muestras presentan valores atípicos por lo que no siguen distribuciones normales de los datos.
+
+Una vez descartada la prueba paramétrica, además que la cantidad de observaciones son muy pocas se decide utilizar el método de remuestreo debido a que tenemos en cada muesta poca cantidad de observaciones.
+
+Se plantean las hipótesis.
+H0: Las medias de ingresos entre las personas que estudiaron en una Universidad Estatal, CFT, e IP, en la región metropolitana son iguales.
+Ha: Las medias de ingresos entre las personas que estudiaron en una Universidad Estatal, CFT, e IP, en la región metropolitana son distintos.
+
+```{r}
+library(boot)
+
+valor_nulo <- 0
+B <-2000
+# Calcular la diferencia entre la media observada y el valor nulo
+diferencia <- mean(datos_rm$ytotcorh) - valor_nulo
+datos_ajustados <- datos_rm
+datos_ajustados$ytotcorh <- datos_rm$ytotcorh - diferencia
+
+# Función para realizar el bootstrapping
+anova_func <- function(data, indices) {
+  d <- data[indices, ]
+  aov_results <- aov(ytotcorh ~ e8, data = d)
+  return(summary(aov_results)[[1]]["e8", "F value"])
+}
+
+# Realizar bootstrapping con los datos ajustados
+distribucion_bootstrap <- boot(data = datos_ajustados, statistic = anova_func, R = B)
+valor_observado <- summary(aov(ytotcorh ~ e8, data = datos_rm))[[1]]["e8", "F value"]
+p_valor <- (sum(distribucion_bootstrap$t > valor_observado) + 1) / (B + 1)
+cat("Valor p:", p_valor)
+```
+
+Si consideramos un alfa = 0.05 con un 95% de confianza podemos decir que se falla al rechazar la hipótesis nula, no hay suficiente evidencia para rechazar la hipótesis nula en este caso. Sin embargo, se hace un análisis post-hoc.
+
+```{r}
+# Realizar ANOVA tradicional usando las muestras bootstrap
+aov_results_bootstrap <- aov(ytotcorh ~ e8, data = datos_rm)
+
+# Realizar análisis post-hoc (método de Tukey)
+posthoc_tukey <- TukeyHSD(aov_results_bootstrap)
+
+# Imprimir los resultados del análisis post-hoc
+print(posthoc_tukey)
+```
+
+Se puede puede observar que haciendo esta análisis, podemos decir con un 95% de confianza que no existen diferencias significativas entre CFT e IP, sin embargo entre los demás si existen diferencias significativas.
